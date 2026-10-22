@@ -2,7 +2,7 @@
 
 每天把 Gmail 裡的技術電子報整理成一集中文 Podcast。需求見 [SPEC.md](SPEC.md)。
 
-> 目前進度：Phase 2（廣播稿 + 轉成 mp3）。上傳 Drive 與排程在 Phase 3，完整設定教學在 Phase 4。
+> 目前進度：Phase 3（上傳 Drive + GitHub Actions 排程）。完整設定教學在 Phase 4。
 
 ## 快速開始
 
@@ -15,6 +15,7 @@ cp .env.example .env   # 填入 GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / ANTHRO
 npm run auth           # 瀏覽器登入 Google，把印出的 GOOGLE_REFRESH_TOKEN 填進 .env
 npm run start -- --script-only   # 只產生評分結果與廣播稿
 npm run start -- --dry-run       # 再加上 mp3（需要 GOOGLE_TTS_CREDENTIALS）
+npm run start                    # 完整流程：再上傳到 Google Drive 的 mailcast 資料夾
 ```
 
 OAuth 用戶端請在 Google Cloud Console 建立「桌面應用程式」類型，並啟用 Gmail API。`npm run auth` 只申請 `gmail.readonly` 與 `drive.file` 兩個權限。
@@ -89,6 +90,40 @@ npm run voices
 - 想切回舊語音：設定 `TTS_MODEL=none`、`TTS_VOICE=cmn-TW-Wavenet-A`，此時語速與音調用 `TTS_SPEAKING_RATE`、`TTS_PITCH` 調整
 
 音檔使用 [ffmpeg-static](https://www.npmjs.com/package/ffmpeg-static) 內附的 ffmpeg 編碼，不需要另外安裝。
+
+## 上傳與排程（Phase 3）
+
+### Google Drive
+
+1. Google Cloud Console →「API 和服務」→「程式庫」搜尋 `Google Drive API` → 按「啟用」（跟 Gmail 同一個專案）
+2. 不需要重新執行 `npm run auth`：refresh token 當初已經包含 `drive.file` 權限
+3. `npm run start` 會在 Drive 根目錄建立 `mailcast` 資料夾並上傳當天的 `mailcast-YYYY-MM-DD.mp3`
+   - 因為 `drive.file` 只能看到程式自己建立的檔案，請不要手動建立同名資料夾；程式看不到它，會另建一個
+   - 同一天重複執行會覆蓋同一個檔案（檔案 id 不變），不會產生重複檔
+   - 上傳後刪除資料夾中超過 `RETENTION_DAYS`（預設 7）天的 `mailcast-*.mp3`，只會動這種檔名的檔案
+
+### GitHub Actions（`.github/workflows/mailcast.yml`）
+
+- 每天 UTC 22:00（台灣時間 06:00）執行完整流程；GitHub 的排程常會延遲幾分鐘到半小時以上
+- 「Actions」→「mailcast」→「Run workflow」可手動觸發，並選擇模式 `full` / `dry-run` / `script-only`
+  - `dry-run`、`script-only` 會把當天的 `output/` 存成 artifact `output-<模式>`（保留 3 天）方便檢查；排程執行不會保存這些內容
+- 「Settings」→「Secrets and variables」→「Actions」→「Secrets」新增：
+  `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REFRESH_TOKEN`、`GOOGLE_TTS_CREDENTIALS`、`ANTHROPIC_API_KEY`（內容跟 `.env` 相同）
+- 其他設定（`CLAUDE_MODEL`、`GMAIL_QUERY`、`TTS_VOICE`、`RETENTION_DAYS` 等）可以在同一頁的「Variables」新增同名變數覆蓋預設值，不設就用預設
+- `newsletter-senders.json` 每次執行後存成 artifact `newsletter-senders`（保留 90 天），下次執行會自動接續累計；要下載時到任一次執行的頁面最下方「Artifacts」
+
+### 錯誤處理
+
+- 任一必要步驟失敗（Gmail、分類、評分、寫稿、TTS、上傳）程式會以非零狀態碼結束，workflow 會標示失敗，GitHub 預設會寄信通知
+- 原文抓取（F3）失敗不算錯誤，會改用電子報摘要
+- Google API 遇到 429 / 5xx / 網路錯誤會重試 3 次（1、2、4 秒）；Claude SDK 也會自動重試 3 次
+- 日誌只有流程狀態與數量，沒有郵件內文、廣播稿或金鑰
+
+### 驗證
+
+1. 本機 `npm run start`，確認 Drive 出現 `mailcast/mailcast-YYYY-MM-DD.mp3`；再跑一次，確認仍然只有一個檔案
+2. 設好 Secrets 後手動觸發 workflow（模式 `full`），確認成功且 Drive 檔案更新
+3. 故意把 Secret `ANTHROPIC_API_KEY` 改成錯的值再手動觸發，確認 workflow 顯示失敗；驗證完改回來
 
 ## 輸出（`output/`，不會進 git）
 

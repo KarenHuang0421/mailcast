@@ -1,9 +1,11 @@
 // Entry point: `npm run start [-- --dry-run | --script-only]`
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { analyze, type NewsItem } from "./analyze.js";
 import { claudeClient } from "./claude.js";
 import { classify, updateSenderList } from "./classify.js";
 import { loadConfig, ttsCredentials } from "./config.js";
+import { driveClient, uploadEpisode } from "./drive.js";
 import { fetchArticles, type ArticleResult } from "./fetchArticle.js";
 import { fetchNewsletter, gmailClient, listCandidates, type Newsletter } from "./gmail.js";
 import { googleAuth } from "./google.js";
@@ -29,7 +31,8 @@ async function main() {
   // Fail fast on a missing/invalid TTS key before spending on Gmail/Claude calls.
   if (!args.scriptOnly) ttsCredentials(config);
 
-  const gmail = gmailClient(googleAuth(config));
+  const auth = googleAuth(config);
+  const gmail = gmailClient(auth);
   const claude = claudeClient(config);
   const interests = await readFile("interests.md", "utf8");
 
@@ -106,8 +109,13 @@ async function main() {
 
   if (args.dryRun) return;
 
-  // F6 is implemented in Phase 3.
-  throw new Error("上傳 Drive（Phase 3）尚未實作，目前請使用 --dry-run 或 --script-only");
+  // F6
+  const upload = await uploadEpisode(driveClient(auth), audio.file, config.RETENTION_DAYS, date);
+  log(
+    `Drive：${upload.replaced ? "覆蓋" : "上傳"} mailcast/${path.basename(audio.file)}` +
+      `，刪除超過 ${config.RETENTION_DAYS} 天的舊檔 ${upload.deleted} 個`,
+  );
+  log("完成");
 }
 
 main().catch((err) => {

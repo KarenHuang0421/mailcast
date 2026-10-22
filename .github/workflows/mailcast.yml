@@ -1,0 +1,107 @@
+name: mailcast
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # 06:00 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "執行模式"
+        type: choice
+        default: full
+        options:
+          - full
+          - dry-run
+          - script-only
+
+permissions:
+  contents: read
+  actions: read # to download the previous newsletter-senders artifact
+
+concurrency:
+  group: mailcast
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # F1-4: carry the sender list over from the latest run that saved it.
+      - name: Restore newsletter-senders.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p output
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=newsletter-senders&per_page=1" \
+            --jq '.artifacts[0] | select(.expired == false) | .workflow_run.id' || true)
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" -n newsletter-senders -D output || echo "下載失敗，從空名單開始"
+          else
+            echo "沒有既有名單，從空名單開始"
+          fi
+
+      - name: Run mailcast
+        env:
+          MODE: ${{ inputs.mode || 'full' }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_TTS_CREDENTIALS: ${{ secrets.GOOGLE_TTS_CREDENTIALS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional overrides from repository variables; empty values fall back to defaults.
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          CLAUDE_CLASSIFY_MODEL: ${{ vars.CLAUDE_CLASSIFY_MODEL }}
+          GMAIL_QUERY: ${{ vars.GMAIL_QUERY }}
+          SKIP_CLASSIFY: ${{ vars.SKIP_CLASSIFY }}
+          MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES }}
+          MAX_EMAILS: ${{ vars.MAX_EMAILS }}
+          MAX_DEEP_ITEMS: ${{ vars.MAX_DEEP_ITEMS }}
+          SCRIPT_TARGET_CHARS: ${{ vars.SCRIPT_TARGET_CHARS }}
+          TTS_MODEL: ${{ vars.TTS_MODEL }}
+          TTS_VOICE: ${{ vars.TTS_VOICE }}
+          TTS_LANGUAGE: ${{ vars.TTS_LANGUAGE }}
+          TTS_STYLE_PROMPT: ${{ vars.TTS_STYLE_PROMPT }}
+          TTS_SPEAKING_RATE: ${{ vars.TTS_SPEAKING_RATE }}
+          TTS_PITCH: ${{ vars.TTS_PITCH }}
+          RETENTION_DAYS: ${{ vars.RETENTION_DAYS }}
+        run: |
+          case "$MODE" in
+            full) npm run start ;;
+            dry-run) npm run start -- --dry-run ;;
+            script-only) npm run start -- --script-only ;;
+            *) echo "未知模式：$MODE"; exit 1 ;;
+          esac
+
+      - name: Save newsletter-senders.json
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: newsletter-senders
+          path: output/newsletter-senders.json
+          if-no-files-found: ignore
+          retention-days: 90
+          overwrite: true
+
+      # Manual test runs only: keep the day's output (script, analysis, mp3) for a few days.
+      # Not uploaded on scheduled runs, so mail-derived content is not kept around.
+      - name: Save test output
+        if: always() && inputs.mode != '' && inputs.mode != 'full'
+        uses: actions/upload-artifact@v5
+        with:
+          name: output-${{ inputs.mode }}
+          path: |
+            output/
+            !output/newsletter-senders.json
+          if-no-files-found: ignore
+          retention-days: 3
