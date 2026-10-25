@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { analyze, type NewsItem } from "./analyze.js";
 import { claudeClient } from "./claude.js";
-import { classify, updateSenderList } from "./classify.js";
+import { classify, EPISODE_CATEGORIES, updateSenderList, type Category } from "./classify.js";
 import { loadConfig, ttsCredentials } from "./config.js";
 import { driveClient, uploadEpisode } from "./drive.js";
 import { fetchArticles, type ArticleResult } from "./fetchArticle.js";
@@ -43,12 +43,12 @@ async function main() {
   // F1-2
   const classified = await classify(claude, config, candidates);
   await writeOutput(`${outDir}/classification.json`, classified);
-  const count = (c: string) => classified.filter((m) => m.category === c).length;
+  const count = (c: Category) => classified.filter((m) => m.category === c).length;
   const bulkCount = candidates.filter((c) => c.hasListUnsubscribe || c.hasListId).length;
   log(
     config.skipClassify
       ? `標籤模式：略過分類，全部 ${candidates.length} 封視為電子報`
-      : `大量寄送 ${bulkCount} 封 → 技術電子報 ${count("tech_newsletter")} / 其他大量寄送 ${count("other_bulk")} / 個人 ${count("personal")}；一般信件 ${count("not_bulk")}`,
+      : `大量寄送 ${bulkCount} 封 → 技術電子報 ${count("tech_newsletter")} / 新聞 ${count("news")} / 其他大量寄送 ${count("other_bulk")} / 個人 ${count("personal")}；一般信件 ${count("not_bulk")}`,
   );
   // "一般未讀信" = mail a person would read: non-bulk + personal. Unknown in label mode.
   const generalMailCount = config.skipClassify ? null : count("not_bulk") + count("personal");
@@ -58,9 +58,13 @@ async function main() {
   log(`電子報寄件者名單累計 ${senderTotal} 個`);
 
   // F1-3
-  const techMails = classified.filter((m) => m.category === "tech_newsletter").slice(0, config.MAX_EMAILS);
+  // Tech newsletters first, so news never crowds them out of the MAX_EMAILS limit.
+  const episodeMails = EPISODE_CATEGORIES.flatMap((cat) => classified.filter((m) => m.category === cat)).slice(
+    0,
+    config.MAX_EMAILS,
+  );
   const newsletters: Newsletter[] = [];
-  for (const [i, m] of techMails.entries()) newsletters.push(await fetchNewsletter(gmail, m, `n${i + 1}`));
+  for (const [i, m] of episodeMails.entries()) newsletters.push(await fetchNewsletter(gmail, m, `n${i + 1}`));
   await writeOutput(`${outDir}/newsletters.json`, newsletters);
   log(`抓取電子報內文 ${newsletters.length} 封（截斷 ${newsletters.filter((n) => n.truncated).length} 封）`);
 
@@ -69,7 +73,7 @@ async function main() {
   let script: Script;
 
   if (newsletters.length === 0) {
-    log("今天沒有技術電子報，產生簡短稿");
+    log("今天沒有技術電子報或新聞，產生簡短稿");
     script = emptyScript(dateLong, generalMailCount);
   } else {
     // F2

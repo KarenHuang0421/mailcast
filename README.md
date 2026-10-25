@@ -130,12 +130,12 @@ npm run voices
 | 檔案 | 內容 |
 |---|---|
 | `YYYY-MM-DD/classification.json` | 每封候選信的分類與理由，用來檢查誤判 |
-| `YYYY-MM-DD/newsletters.json` | 技術電子報轉成的純文字與連結 |
+| `YYYY-MM-DD/newsletters.json` | 技術電子報與新聞轉成的純文字與連結 |
 | `YYYY-MM-DD/analysis.json` | 拆解、去重、評分後的新知（deep / brief / skip） |
 | `YYYY-MM-DD/articles.json` | deep 項目的原文抓取結果 |
 | `YYYY-MM-DD/script.txt` | 廣播稿（`script.json` 為分段版本，用來在段落間插入停頓） |
 | `YYYY-MM-DD/mailcast-YYYY-MM-DD.mp3` | 音檔（`--dry-run` 或完整流程） |
-| `newsletter-senders.json` | 累計的技術電子報寄件者名單 |
+| `newsletter-senders.json` | 累計的技術電子報與新聞寄件者名單 |
 
 ## 調整內容
 

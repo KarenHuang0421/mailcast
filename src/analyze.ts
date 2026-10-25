@@ -43,7 +43,7 @@ const AnalysisSchema = z.object({
 });
 
 function buildSystem(maxDeep: number) {
-  return `你是技術電子報編輯，幫一位有經驗的前端工程師整理每天的技術新知。
+  return `你是電子報編輯，幫一位有經驗的前端工程師整理每天的技術新知與一般新聞。
 
 任務：
 1. 把每封電子報拆成一則一則的「新知項目」。一則新知是一個獨立事件、發布、文章或工具。電子報的開頭問候、目錄、編者閒聊、徵才、贊助廣告、活動促銷不算新知（若硬要列出，tier 給 skip）。
@@ -51,7 +51,7 @@ function buildSystem(maxDeep: number) {
 3. 依 <interests> 中的興趣設定評分：
    - deep：屬於「高度感興趣」且內容有份量（重大發布、重要漏洞或事件、值得理解的新技術）
    - brief：屬於「一般感興趣」，或屬於高度感興趣但只是小更新
-   - skip：不感興趣、廣告、促銷、活動報名、與技術無關
+   - skip：不感興趣、廣告、促銷、活動報名，或不在興趣設定中的主題
    deep 最多 ${maxDeep} 則；多個來源都提到的新知可視為較重要。
 4. relevance 為 0～100 的整數，deep 項目要給最高分，方便排序。
 
@@ -82,7 +82,7 @@ export async function analyze(
     label: "拆解與評分",
     model: config.CLAUDE_MODEL,
     system: buildSystem(config.MAX_DEEP_ITEMS),
-    user: `<interests>\n${interests}\n</interests>\n\n以下是今天的 ${newsletters.length} 封技術電子報：\n\n${renderNewsletters(newsletters)}`,
+    user: `<interests>\n${interests}\n</interests>\n\n以下是今天的 ${newsletters.length} 封電子報（技術電子報與新聞）：\n\n${renderNewsletters(newsletters)}`,
     schema: AnalysisSchema,
     maxTokens: 64000,
   });

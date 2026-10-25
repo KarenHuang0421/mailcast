@@ -8,7 +8,10 @@ import type { Config } from "./config.js";
 import type { CandidateMeta } from "./gmail.js";
 import { escapeAttr, escapeTag, OUTPUT_ROOT, taipeiDate, writeOutput } from "./util.js";
 
-export type Category = "tech_newsletter" | "other_bulk" | "personal" | "not_bulk";
+export type Category = "tech_newsletter" | "news" | "other_bulk" | "personal" | "not_bulk";
+
+/** Categories whose content goes into the episode. */
+export const EPISODE_CATEGORIES: readonly Category[] = ["tech_newsletter", "news"];
 
 export interface ClassifiedMail extends CandidateMeta {
   category: Category;
@@ -19,17 +22,18 @@ const ClassifySchema = z.object({
   results: z.array(
     z.object({
       id: z.string(),
-      category: z.enum(["tech_newsletter", "other_bulk", "personal"]),
+      category: z.enum(["tech_newsletter", "news", "other_bulk", "personal"]),
       reason: z.string().describe("一句話說明判斷依據"),
     }),
   ),
 });
 
-const SYSTEM = `你是郵件分類器。根據每封信的中繼資料（寄件者、主旨、Gmail 分類、摘要片段），把信分成三類：
+const SYSTEM = `你是郵件分類器。根據每封信的中繼資料（寄件者、主旨、Gmail 分類、摘要片段），把信分成四類：
 - tech_newsletter：技術新知、開發者電子報、資安通報、AI 新聞、技術部落格文章摘要等以「傳遞技術新知」為主的定期寄送內容。
-- other_bulk：行銷促銷、產品廣告、活動報名、帳單、收據、交易或出貨通知、帳號安全通知、社群網站通知、一般非技術新聞等。
+- news：一般新聞，例如新聞媒體寄送的時事、國際、財經、社會、台灣在地新聞摘要或快報。AI 或技術新聞歸 tech_newsletter，不算 news。
+- other_bulk：行銷促銷、產品廣告、活動報名、帳單、收據、交易或出貨通知、帳號安全通知、社群網站通知等。
 - personal：個人或工作往來信件（例如同事、朋友、客戶寄來的信）。
-判斷原則：技術公司寄的純促銷或帳務通知算 other_bulk，不算 tech_newsletter。拿不準時偏向 other_bulk。
+判斷原則：技術公司寄的純促銷或帳務通知算 other_bulk，不算 tech_newsletter；新聞媒體寄的訂閱促銷、活動廣告也算 other_bulk，不算 news。拿不準時偏向 other_bulk。
 每封信都必須輸出一筆結果，id 要與輸入完全相同。
 
 ${UNTRUSTED_NOTICE}`;
@@ -83,6 +87,8 @@ export async function classify(
 
 interface SenderEntry {
   name: string;
+  /** Latest category seen for this sender. Missing on entries written before news was added. */
+  category?: Category;
   count: number;
   firstSeen: string;
   lastSeen: string;
@@ -107,15 +113,22 @@ export async function updateSenderList(mails: ClassifiedMail[]): Promise<number>
   const counted = new Set(data.countedMessageIds);
   const today = taipeiDate();
   for (const m of mails) {
-    if (m.category !== "tech_newsletter" || counted.has(m.id)) continue;
+    if (!EPISODE_CATEGORIES.includes(m.category) || counted.has(m.id)) continue;
     counted.add(m.id);
     const e = data.senders[m.fromAddress];
     if (e) {
       e.count += 1;
       e.name = m.fromName;
+      e.category = m.category;
       e.lastSeen = today;
     } else {
-      data.senders[m.fromAddress] = { name: m.fromName, count: 1, firstSeen: today, lastSeen: today };
+      data.senders[m.fromAddress] = {
+        name: m.fromName,
+        category: m.category,
+        count: 1,
+        firstSeen: today,
+        lastSeen: today,
+      };
     }
   }
   data.updatedAt = new Date().toISOString();

@@ -34,15 +34,15 @@ const ScriptSchema = z.object({
 });
 
 function buildSystem(targetChars: number) {
-  return `你是一位懂技術的中文 Podcast 主持人，節目叫 mailcast，每天早上幫聽眾整理技術電子報的重點。聽眾是一位有經驗的前端工程師，會在通勤時收聽。你寫的稿子會直接交給語音合成唸出來。
+  return `你是一位懂技術的中文 Podcast 主持人，節目叫 mailcast，每天早上幫聽眾整理技術電子報與新聞的重點。聽眾是一位有經驗的前端工程師，會在通勤時收聽。你寫的稿子會直接交給語音合成唸出來。
 
 節目結構（依序輸出成 sections）：
-1. opening（約十五秒）：問候、今天的日期、今天收到幾封技術電子報、預告今天要深入聊哪幾個主題。
-2. brief：快速新知。把所有 brief 項目串成一段自然的口播，每則一兩句話，說清楚「發生了什麼」。項目之間用自然的轉場語連接。沒有 brief 項目時省略這一段。
+1. opening（約十五秒）：問候、今天的日期、今天收到幾封電子報、預告今天要深入聊哪幾個主題。
+2. brief：快速新知。把所有 brief 項目串成一段自然的口播，每則一兩句話，說清楚「發生了什麼」。項目之間用自然的轉場語連接。如果同時有技術新知和一般時事新聞，先講完技術新知，再用一句轉場（例如「接下來看看今天的時事」）帶到一般新聞，不要兩者穿插。沒有 brief 項目時省略這一段。
 3. deep：每則深入解說各一個 section，每則約一到兩分鐘，內容包含：
    - 這是什麼：必要時補充背景知識，假設聽眾是有經驗的前端工程師，但不熟這個領域。
    - 為什麼重要、影響是什麼。
-   - 跟聽眾可能的關聯，例如對前端開發、AI 應用開發或資安學習的意義。
+   - 跟聽眾可能的關聯，例如對前端開發、AI 應用開發或資安學習的意義。如果是非技術的一般時事新聞，改講對日常生活、產業或台灣的可能影響，不要硬扯到開發或技術。
 4. closing：用一句話總結今天最值得記住的一件事；如果有值得回去看原文的，提醒是哪一篇（用電子報名稱或文章標題描述，不要唸網址）。若資料中有一般未讀信的數量，在這裡順帶提一句還有幾封一般未讀信，不要提任何寄件者或主旨。最後簡短道別。
 
 寫作要求：
@@ -92,7 +92,7 @@ function renderInput(input: ScriptInput): string {
 
   return [
     `今天日期：${input.dateLong}`,
-    `今天的技術電子報數量：${input.newsletterCount} 封`,
+    `今天的電子報數量（技術電子報與新聞）：${input.newsletterCount} 封`,
     input.generalMailCount === null ? "" : `一般未讀信數量：${input.generalMailCount} 封`,
     "",
     `<brief_items count="${brief.length}">\n${briefXml}\n</brief_items>`,
@@ -164,7 +164,7 @@ export function emptyScript(dateLong: string, generalMailCount: number | null): 
   const sections: ScriptSection[] = [
     {
       kind: "opening",
-      text: `早安，歡迎收聽 mailcast。今天是${date}。今天的信箱比較安靜，沒有收到新的技術電子報，所以這一集就簡短一點。`,
+      text: `早安，歡迎收聽 mailcast。今天是${date}。今天的信箱比較安靜，沒有收到新的技術電子報或新聞，所以這一集就簡短一點。`,
     },
     {
       kind: "closing",
